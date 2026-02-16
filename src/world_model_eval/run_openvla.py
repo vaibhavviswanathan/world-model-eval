@@ -19,7 +19,7 @@ from pathlib import Path
 
 
 def evaluate_openvla(wm, vla, processor, trials, retries=1, rollout_length=40,
-                     save_video=False, video_out_dir=None, root_dir=None):
+                     save_video=False, video_out_dir=None, root_dir=None, judge="anthropic"):
     """
     Rollout an OpenVLA model on a list of tasks, and return the score on each task.
     Arguments:
@@ -71,7 +71,10 @@ def evaluate_openvla(wm, vla, processor, trials, retries=1, rollout_length=40,
                     vid_name = trial_png.stem
                     out_name = f"{vid_name}.mp4"
                     media.write_video(str(target_dir / out_name), rollout_video, fps=20)
-                score = predict(rollout_video, trial)
+                if judge:
+                    score = predict(rollout_video, trial, judge=judge)
+                else:
+                    score = 0.0
                 results.append({
                     "task_key": trial["task_key"],
                     "task_display": trial["task_display"],
@@ -99,6 +102,7 @@ def run(
     retries: int = 1,
     save_video: bool = False,
     video_out_dir: str | None = None,
+    judge: str = "anthropic",
 ) -> dict[str, dict[str, float]]:
     """Run the OpenVLA evaluation loop."""
 
@@ -115,7 +119,8 @@ def run(
         torch_dtype=torch.bfloat16,
         low_cpu_mem_usage=True,
         trust_remote_code=True,
-    ).cuda().eval()
+        device_map="auto",
+    ).eval()
 
     if root_dir is None:
         raise ValueError("root_dir must be provided; pass --root-dir to point at the evaluation dataset.")
@@ -132,6 +137,7 @@ def run(
         save_video=save_video,
         video_out_dir=video_out_dir,
         root_dir=root_dir,
+        judge=judge,
     )
 
     agg = aggregate_model_results(results)
@@ -148,6 +154,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--save-video", action="store_true")
     parser.add_argument("--video-out-dir")
+    parser.add_argument("--judge", default="anthropic",
+                        help="Judge backend: 'anthropic', 'openai', or 'provider:model' (e.g. 'anthropic:claude-sonnet-4-5-20250929')")
+    parser.add_argument("--no-judge", action="store_true",
+                        help="Skip LLM scoring; only generate rollouts")
     return parser
 
 
@@ -162,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, dict[str, float]]:  # p
         retries=args.retries,
         save_video=args.save_video,
         video_out_dir=args.video_out_dir,
+        judge=None if args.no_judge else args.judge,
     )
 
 

@@ -30,7 +30,7 @@ def normalize_actions(unnorm_actions, statistics, key="bridge_orig/1.0.0"):
     return norm_actions
 
 def evaluate_spatialvla(wm, vla, processor, trials, retries=1, rollout_length=40,
-                        save_video=False, video_out_dir=None):
+                        save_video=False, video_out_dir=None, judge="anthropic"):
     """
     Roll out SpatialVLA on a list of trials discovered from ROOT_DIR and return per-trial scores.
     """
@@ -74,7 +74,10 @@ def evaluate_spatialvla(wm, vla, processor, trials, retries=1, rollout_length=40
                     vid_name = Path(trial["trial_png"]).stem
                     media.write_video(str(Path(video_out_dir) / f"{vid_name}.mp4"), rollout_video, fps=20)
 
-                score = predict(rollout_video, trial)
+                if judge:
+                    score = predict(rollout_video, trial, judge=judge)
+                else:
+                    score = 0.0
                 results.append({
                     "task_key": trial["task_key"],
                     "task_display": trial["task_display"],
@@ -103,6 +106,7 @@ def run(
     retries: int = 1,
     save_video: bool = False,
     video_out_dir: str | None = None,
+    judge: str = "anthropic",
 ) -> dict[str, dict[str, float]]:
     ckpt_path = Path(checkpoint_path)
     if not ckpt_path.exists():
@@ -133,6 +137,7 @@ def run(
         retries=retries,
         save_video=save_video,
         video_out_dir=video_out_dir,
+        judge=judge,
     )
 
     agg = aggregate_model_results(results)
@@ -149,6 +154,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--save-video", action="store_true")
     parser.add_argument("--video-out-dir")
+    parser.add_argument("--judge", default="anthropic",
+                        help="Judge backend: 'anthropic', 'openai', or 'provider:model' (e.g. 'anthropic:claude-sonnet-4-5-20250929')")
+    parser.add_argument("--no-judge", action="store_true",
+                        help="Skip LLM scoring; only generate rollouts")
     return parser
 
 
@@ -163,6 +172,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, dict[str, float]]:  # p
         retries=args.retries,
         save_video=args.save_video,
         video_out_dir=args.video_out_dir,
+        judge=None if args.no_judge else args.judge,
     )
 
 

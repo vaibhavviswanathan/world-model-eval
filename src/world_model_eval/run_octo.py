@@ -34,7 +34,7 @@ def normalize_actions(unnorm_actions, statistics):
     return norm_actions
 
 def evaluate_octo(wm, vla, trials, rollout_length=40, retries=1,
-                  save_video=False, video_out_dir=None, root_dir=None):
+                  save_video=False, video_out_dir=None, root_dir=None, judge="anthropic"):
     results = []
     if save_video and video_out_dir:
         Path(video_out_dir).mkdir(parents=True, exist_ok=True)
@@ -87,7 +87,10 @@ def evaluate_octo(wm, vla, trials, rollout_length=40, retries=1,
                 vid_name = trial_png.stem
                 out_name = f"{vid_name}.mp4"
                 media.write_video(str(target_dir / out_name), rollout_video, fps=20)
-            score = predict(rollout_video, trial)
+            if judge:
+                score = predict(rollout_video, trial, judge=judge)
+            else:
+                score = 0.0
             results.append({
                 "task_key": trial["task_key"],
                 "task_display": trial["task_display"],
@@ -115,6 +118,7 @@ def run(
     retries: int = 1,
     save_video: bool = False,
     video_out_dir: str | None = None,
+    judge: str = "anthropic",
 ) -> dict[str, dict[str, float]]:
     ckpt_path = Path(checkpoint_path)
     if not ckpt_path.exists():
@@ -139,6 +143,7 @@ def run(
         save_video=save_video,
         video_out_dir=video_out_dir,
         root_dir=root_dir,
+        judge=judge,
     )
 
     agg = aggregate_model_results(results)
@@ -155,6 +160,10 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--retries", type=int, default=1)
     parser.add_argument("--save-video", action="store_true")
     parser.add_argument("--video-out-dir")
+    parser.add_argument("--judge", default="anthropic",
+                        help="Judge backend: 'anthropic', 'openai', or 'provider:model' (e.g. 'anthropic:claude-sonnet-4-5-20250929')")
+    parser.add_argument("--no-judge", action="store_true",
+                        help="Skip LLM scoring; only generate rollouts")
     return parser
 
 
@@ -169,6 +178,7 @@ def main(argv: Sequence[str] | None = None) -> dict[str, dict[str, float]]:  # p
         retries=args.retries,
         save_video=args.save_video,
         video_out_dir=args.video_out_dir,
+        judge=None if args.no_judge else args.judge,
     )
 
 

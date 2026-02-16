@@ -72,6 +72,16 @@ _VIDEO_OUT_DIR = flags.DEFINE_string(
     None,
     "Directory to store rollout videos when --save_video is set.",
 )
+_JUDGE = flags.DEFINE_string(
+    "judge",
+    "anthropic",
+    "Judge backend: 'anthropic', 'openai', or 'provider:model' (e.g. 'anthropic:claude-sonnet-4-5-20250929').",
+)
+_NO_JUDGE = flags.DEFINE_bool(
+    "no_judge",
+    False,
+    "Skip LLM scoring; only generate rollouts.",
+)
 
 flags.mark_flag_as_required("checkpoint_path")
 flags.mark_flag_as_required("world_model_checkpoint")
@@ -206,7 +216,7 @@ def _build_rt1_observation(frame_hist, instr_embed):
 
 
 def evaluate_rt1(wm: WorldModel, policy: RT1Policy, trials, rollout_length=40, retries=1,
-                 history_len=15, save_video=False, video_out_dir=None, root_dir=None):
+                 history_len=15, save_video=False, video_out_dir=None, root_dir=None, judge="anthropic"):
   """
   Evaluate RT-1 on discovered trials using the world model. Returns a list of per-trial dicts with 'score'.
   """
@@ -272,7 +282,10 @@ def evaluate_rt1(wm: WorldModel, policy: RT1Policy, trials, rollout_length=40, r
           out_name = f"{stem}.mp4"
           media.write_video(str(target_dir / out_name), rollout_video, fps=20)
 
-        score = predict(rollout_video, trial)
+        if judge:
+            score = predict(rollout_video, trial, judge=judge)
+        else:
+            score = 0.0
         results.append({
             "task_key": trial["task_key"],
             "task_display": trial["task_display"],
@@ -335,6 +348,7 @@ def _absl_main(argv):
       save_video=_SAVE_VIDEO.value,
       video_out_dir=_VIDEO_OUT_DIR.value,
       root_dir=root_dir,
+      judge=None if _NO_JUDGE.value else _JUDGE.value,
   )
 
   agg = aggregate_model_results(results)
